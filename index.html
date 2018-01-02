@@ -6,9 +6,62 @@
     <script src="lib/core/ht.js"></script>
     <script src="lib/plugin/ht-form.js"></script>
     <script src="lib/plugin/ht-modeling.js"></script>
+    <script src="lib/plugin/ht-dialog.js"></script>
+    <script src="lib/plugin/ht-cssanimation.js"></script>    
+    <script src="lib/plugin/ht-panel.js"></script>
+    <script src="lib/jquery.js"></script> 
     <script>
     function init() {
         ht.Default.setImage('door', 'res/wall.jpg');
+
+        var easing = function (t) {
+            return 1 - (--t) * t * t * t;
+        };
+
+        // 设置中心位置
+        function setCenter (center, finish) {
+            if (!center) return;
+            var c = g3d.getCenter().slice(0),
+                dx = center[0] - c[0],
+                dy = center[1] - c[1],
+                dz = center[2] - c[2];
+            // 启动 500 毫秒的动画过度
+            ht.Default.startAnim({
+                duration: 500,
+                easing: easing,
+                finishFunc: finish || function() {},
+                action: function(v, t) {
+                    g3d.setCenter([
+                        c[0] + dx * v,
+                        c[1] + dy * v,
+                        c[2] + dz * v
+                    ]);
+                }
+            });
+        };
+
+        // 设置眼睛位置
+        function setEye (eye, finish) {
+            if (!eye) return;
+            var e = g3d.getEye().slice(0),
+                dx = eye[0] - e[0],
+                dy = eye[1] - e[1],
+                dz = eye[2] - e[2];
+            // 启动 500 毫秒的动画过度
+            ht.Default.startAnim({
+                duration: 500,
+                easing: easing,
+                finishFunc: finish || function() {},
+                action: function(v, t) {
+                    g3d.setEye([
+                        e[0] + dx * v,
+                        // e[1] + dy * v,
+                        73,
+                        e[2] + dz * v
+                    ]);
+                }
+            });
+        };        
 
         var g3d = new ht.graph3d.Graph3dView();
         var view = g3d.getView();
@@ -16,7 +69,54 @@
         view.style.background = "#222222";
         var dataModel = g3d.dm();
 
+        var tableView = new ht.widget.PropertyView(dataModel);
+
+        var panelConfig = {
+            title: "信息",
+            width: 300,
+            height: 200,
+            narrowWhenCollapse: true,
+            contentHeight: 200,
+            content: tableView
+        }
+        var panel = new ht.widget.Panel(panelConfig);
+        panel.setPositionRelativeTo("rightTop");
+        panel.setPosition(0, 0);
+        document.body.appendChild(panel.getView());
+
+
         g3d.isMovable = function() { return false; };
+
+        g3d.mi(function(e) {
+            if (e.kind == 'doubleClickData') {
+                var data = e.data;
+                if (data.a('server')) {     
+                    var p3 = data.p3();
+                    setCenter(p3);
+                    setEye([p3[0], 211, p3[2] + 247]);
+                }
+            }
+            if (e.kind == 'clickData') {
+                var data = e.data;
+                console.log(data.a('server'));
+                if (data.a('server') != void 0 && data.a('id-4-show') != void 0) {     
+                    tableView.setProperties([
+                    {
+                        displayName: '属性1',
+                        drawPropertyValue: function(g, property, value, rowIndex, x, y, w, h, data, view) {
+                            ht.Default.drawText(g, e.data.a('id-4-show'), '12px Arial', 'black', x, y, w, h, 'center');
+                        },
+                    },
+                    {
+                        displayName: '属性2',
+                        drawPropertyValue: function(g, property, value, rowIndex, x, y, w, h, data, view) {
+                            ht.Default.drawText(g, e.data.a('id-4-show'), '12px Arial', 'black', x, y, w, h, 'center');
+                        },      
+                    },                                                         
+                ]);                    
+                }
+            }            
+        })
         
         // 创建墙体
         var wall = new ht.CSGShape();
@@ -63,7 +163,6 @@
         });
 
         floor.a({'all.color': 'red'})
-        console.log(floor);
         dataModel.add(floor);
         
         // 门
@@ -82,8 +181,110 @@
         });
         dataModel.add(door);
         
-       var node = new ht.Node(); 
+    var i, node, len = 9;
+    for (i = 0; i < len; i++) {
+        node = new Cabinet({
+            'color': 'white',
+            's3': [60, 120, 40]
+        });
+        node.addToDataModel(dataModel);
+        node.p3((i - 4) * 65, 60, -400);
     }
+    }
+
+    function Cabinet(obj) {
+        var color = obj.color,
+            s3 = obj.s3;
+
+        var node = this._node = new ht.Node();
+        node.a('cabinet', this._node);
+        node.s3(s3);
+        node.s({
+            'all.color': color,
+            'front.visible': false
+        });
+
+        var door = this._door = new ht.DoorWindow();
+        door.setWidth(s3[0]);
+        door.setHeight(1);
+        door.setTall(s3[1]);
+        door.setElevation(0);
+        door.setY(s3[2] * 0.5);
+        door.setHost(node);
+        door.s({
+            'all.color': color,
+            'front.transparent': true,
+            'back.uv': [1,0, 1,1, 0,1, 0,0],
+            'dw.axis': 'right'
+        });
+
+
+        var serverList = this._serverList = [];
+        var max = 6,
+            list = randomList(max, Math.floor(Math.random() * (max - 2)) + 2);
+        var server, h = s3[0] / 4;
+        list.forEach(function(r) {
+            var server = new Server({
+                color: 'rgb(51,49,49)',
+            });
+            server.s3(s3[0] - 2, h, s3[2] - 4);
+            server.setElevation((r - max * 0.5) * (h + 2));
+            server.setHost(node);
+
+            serverList.push(server);
+        });        
+
+    }
+
+    function Server(obj) {
+        var color = obj.color;
+
+        var node = this._node = new ht.Node();
+        node.a('server', this._node);
+        node.a('id-4-show', new Date().getTime());
+        node.s({
+            'all.color': color,
+        });        
+    }
+
+    ht.Default.def('Cabinet', Object, {
+        addToDataModel: function(dm) {
+            dm.add(this._node);
+            dm.add(this._door);
+            this._serverList.forEach(function(s) {
+                s.addToDataModel(dm);
+            })
+        },
+        p3: function() {
+            this._node.p3.apply(this._node, arguments);
+        }         
+    });    
+
+    ht.Default.def('Server', Object, {
+        addToDataModel: function(dm) {
+            dm.add(this._node);
+        },
+        setHost: function() {
+            this._node.setHost.apply(this._node, arguments);
+        },
+        s3: function() {
+            this._node.s3.apply(this._node, arguments);
+        },
+        setElevation: function() {
+            this._node.setElevation.apply(this._node, arguments);
+        }        
+    });
+
+    function randomList (max, size) {
+            var list = [], ran;
+            while (list.length < size) {
+                ran = Math.floor(Math.random() * max);
+                if (list.indexOf(ran) >= 0) 
+                    continue;
+                list.push(ran);
+            }
+            return list;
+        }
     </script>
 </head>
 <body onload="init();">
